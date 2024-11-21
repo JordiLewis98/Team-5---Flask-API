@@ -1,0 +1,19 @@
+curl --request GET http://127.0.0.1:5000/
+
+curl --request POST http://127.0.0.1:5000/observations/add-observations-json \
+--header "Content-Type: application/json" \
+--data '{
+    "observation_id": "OBS001",
+    "observation_date": "2024-11-21",
+    "observation_time": "14:30:00",
+    "observation_timeZone": "UTC",
+    "observation_coordinates": "52.5200, 13.4050",
+    "observation_waterTemp": 15.5,
+    "observation_airTemp": 20.0,
+    "observation_humidity": 75,
+    "observation_windSpeed": 5.0,
+    "observation_windDirection": "N",
+    "observation_precipitation": 10,
+    "observation_haze": 0.3,
+    "observation_becquerel": 120
+}'
