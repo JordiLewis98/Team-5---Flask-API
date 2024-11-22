@@ -76,7 +76,3 @@ def observations_add_json():
     print ("Record added:")
     print (json.dumps(json_data, indent=4)) # used for debugging purposes
     return observation_schema.jsonify(new_observation)
-
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()

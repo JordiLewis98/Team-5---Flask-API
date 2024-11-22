@@ -3,7 +3,7 @@ curl --request GET http://127.0.0.1:5000/
 curl --request POST http://127.0.0.1:5000/observations/add-observations-json \
 --header "Content-Type: application/json" \
 --data '{
-    "observation_id": "OBS001",
+    "observation_id": "PY5667",
     "observation_date": "2024-11-21",
     "observation_time": "14:30:00",
     "observation_timeZone": "UTC",
