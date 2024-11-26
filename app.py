@@ -1,9 +1,9 @@
 from flask import Flask, request
 import json
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
 from flask_marshmallow import Marshmallow
-from datetime import datetime
+from datetime import datetime, timedelta
+import jwt
 
 app = Flask(__name__)
 
@@ -11,6 +11,8 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///observations.db' # path to db
 app.config['SQLALCHEMY_ECHO'] = True # echoes SQL for debug
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = 'Team5APISecretKey'
+
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
@@ -41,9 +43,33 @@ class ObservationSchema(ma.SQLAlchemyAutoSchema):
 observation_schema = ObservationSchema()
 observations_schema = ObservationSchema(many=True)
 
-@app.get("/")
-def hello_world():
-    return "Hello World"
+@app.get("/login")
+def login():
+    auth = request.authorization
+
+    # If basic authentication values are present
+    if auth:
+        # Check if username and password are correct
+        if auth.username == 'Team5' and auth.password == "APIPassword":
+            # Current time
+            now = datetime.utcnow()
+
+            # JWT payload
+            payload = {
+                'sub': auth.username,               
+                'iat': now,                         
+                'exp': now + timedelta(minutes=30) 
+            }
+
+            # Encode the token
+            token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+            return {"token": token}
+        else:
+            return {"message": "error - username or password is incorrect"}, 401
+    else:
+        return {"message": "no authorisation details"}, 401
+          
 
 @app.post("/observations/add-observations-json")
 def observations_add_json():
