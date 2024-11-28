@@ -1,9 +1,10 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify, make_response
 import json
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from datetime import datetime, timedelta
 import jwt
+from functools import wraps
 
 app = Flask(__name__)
 #--------------------------------------------------------------------------------
@@ -42,6 +43,29 @@ class ObservationSchema(ma.SQLAlchemyAutoSchema):
 # instantiate objs based on Marshmallow schemas
 observation_schema = ObservationSchema()
 observations_schema = ObservationSchema(many=True)
+
+#--------------------------------------------------------------------------------
+def token_required(f):
+     @wraps(f)
+     def decorator(*args, **kwargs):
+          token = None
+
+          if 'x-access-tokens' in request.headers:
+               token = request.headers['x-access-tokens']
+
+          if not token:
+               return jsonify({'message': 'a valid token is missing'})
+          
+          try:
+               data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"] )
+
+          except:
+               return jsonify({'message': 'token is invalid'})
+          
+          return f( *args, **kwargs)
+     
+     return decorator
+
 #--------------------------------------------------------------------------------
 @app.get("/login")
 def login():
@@ -105,18 +129,21 @@ def observations_add_json():
 #--------------------------------------------------------------------------------
 # endpoint to show all observations
 @app.get("/observations/get_observations")
+@token_required
 def get_observations():
      all_observations = Observation.query.all()
      return observations_schema.jsonify(all_observations)
 #--------------------------------------------------------------------------------
 # endpoint uses route parameters to determine observation to be queried from db
 @app.get("/observations/get_one_observation/<observation_id>")
+@token_required
 def get_one_observation(observation_id):
      observation = Observation.query.filter_by(observation_id=observation_id).first()
      return observation_schema.jsonify(observation)
 #--------------------------------------------------------------------------------
 #endpoint uses query parameters to get observation
 @app.get("/observations/get_one_observation")
+@token_required
 def get_one_observation_query():
      observation_id = request.args.get("observation_id") # req.args.get() used to access query parameters
      observation = Observation.query.filter_by(observation_id=observation_id).first()
@@ -124,6 +151,7 @@ def get_one_observation_query():
 #--------------------------------------------------------------------------------
 # endpoint used to get observation by json
 @app.get("/observations/get_one_observation_json")
+@token_required
 def get_one_observation_json():
      json_data = request.get_json() # used to access json data
      print(json_data) # used for debugging
@@ -132,6 +160,7 @@ def get_one_observation_json():
      return observation_schema.jsonify(observation)
 #--------------------------------------------------------------------------------
 # endpoint to delete one observation
+@token_required
 @app.delete("/observations/delete_one_observation/<observation_id>")
 def delete_one_observation_route(observation_id): # observation_id accepted as an argument
      Observation.query.filter_by(observation_id=observation_id).delete()
@@ -141,6 +170,7 @@ def delete_one_observation_route(observation_id): # observation_id accepted as a
 #--------------------------------------------------------------------------------
 # endpoint to update observation
 @app.put("/observations/update_observation/<observation_id>")
+@token_required
 def update_observation(observation_id):
      observation = Observation.query.filter_by(observation_id=observation_id).first()
      
@@ -179,6 +209,7 @@ def update_observation(observation_id):
 #--------------------------------------------------------------------------------
 # endpoint to update one user
 @app.patch("/observations/patch_one_observation/<observation_id>")
+@token_required
 def patch_one_observation_route(observation_id): # observation_id accepted as an argument
      
      json_data = request.get_json() # req.get_json() used to access json sent
