@@ -5,6 +5,8 @@ from flask_marshmallow import Marshmallow
 from datetime import datetime, timedelta
 import jwt
 from functools import wraps
+import re
+import uuid
 
 app = Flask(__name__)
 #--------------------------------------------------------------------------------
@@ -19,7 +21,7 @@ ma = Marshmallow(app)
 #--------------------------------------------------------------------------------
 class Observation(db.Model):
     """Definition of the Observation Model used by SQLAlchemy"""
-    observation_id = db.Column(db.String(80), primary_key=True)
+    observation_id = db.Column(db.String(80), primary_key=True, default=lambda: str(uuid.uuid4()))
     observation_date = db.Column(db.Date, nullable=False)
     observation_time = db.Column(db.Time, nullable=False)
     observation_timeZone = db.Column(db.String(80), nullable=False)
@@ -65,7 +67,56 @@ def token_required(f):
           return f( *args, **kwargs)
      
      return decorator
+#--------------------------------------------------------------------------------
+# Helper methods for validation
 
+def validate_date(date):
+    # Validate date in the format YYYYMMDD
+    return bool(re.match(r"^\d{4}\d{2}\d{2}$", date))
+
+def validate_time(time):
+    # Validate time in the format hh:mm:ss
+    return bool(re.match(r"^\d{2}:\d{2}:\d{2}$", time))
+
+def validate_timezone_offset(offset):
+    # Validate timezone offset in the format UTC+hh:mm or UTC-hh:mm
+    return bool(re.match(r"^UTC([+-])\d{2}:\d{2}$", offset))
+
+def validate_coordinates(coord):
+    # Validate coordinates in decimal degrees (float)
+    try:
+        float(coord)
+        return True
+    except ValueError:
+        return False
+
+def validate_temperature(temp):
+    # Validate temperature in Celsius (float)
+    return isinstance(temp, (int, float))
+
+def validate_humidity(humidity):
+    # Validate humidity in g/kg (float)
+    return isinstance(humidity, (int, float))
+
+def validate_wind_speed(wind_speed):
+    # Validate wind speed in km/h (float)
+    return isinstance(wind_speed, (int, float))
+
+def validate_wind_direction(direction):
+    # Validate wind direction in degrees (float)
+    return isinstance(direction, (int, float))
+
+def validate_precipitation(precipitation):
+    # Validate precipitation in mm (float)
+    return isinstance(precipitation, (int, float))
+
+def validate_haze(haze):
+    # Validate haze in percentage (float)
+    return isinstance(haze, (int, float))
+
+def validate_becquerel(becquerel):
+    # Validate becquerel (Bq)
+    return isinstance(becquerel, (int, float))
 #--------------------------------------------------------------------------------
 @app.get("/login")
 def login():
@@ -98,56 +149,93 @@ def login():
 @app.post("/observations/add_observations_json")
 def observations_add_json():
     """endpoint uses json to add observation details to db"""
-    json_data = request.get_json() # req.get_json() used to access json sent
-    print(json_data) # used for debugging purposes
+    json_data = request.get_json()  # req.get_json() used to access json sent
+    print(json_data)  # used for debugging purposes
+
+    # Validate the fields in the incoming JSON data
+    observation_date = json_data.get('observation_date')
+    observation_time = json_data.get('observation_time')
+    observation_timeZone = json_data.get('observation_timeZone')
+    observation_coordinates = json_data.get('observation_coordinates')
+    observation_waterTemp = json_data.get('observation_waterTemp')
+    observation_airTemp = json_data.get('observation_airTemp')
+    observation_humidity = json_data.get('observation_humidity')
+    observation_windSpeed = json_data.get('observation_windSpeed')
+    observation_windDirection = json_data.get('observation_windDirection')
+    observation_precipitation = json_data.get('observation_precipitation')
+    observation_haze = json_data.get('observation_haze')
+    observation_becquerel = json_data.get('observation_becquerel')
 
     # Parse and validate date and time
-    observation_date = datetime.strptime(json_data['observation_date'], '%Y-%m-%d').date()
-    observation_time = datetime.strptime(json_data['observation_time'], '%H:%M:%S').time()
+    try:
+        observation_date = datetime.strptime(observation_date, '%Y-%m-%d').date()
+        observation_time = datetime.strptime(observation_time, '%H:%M:%S').time()
+    except ValueError:
+        return {"message": "Invalid date or time format"}, 400
 
-    new_observation = Observation (
-        observation_id = json_data['observation_id'],
-        observation_date = observation_date,
-        observation_time = observation_time,
-        observation_timeZone = json_data['observation_timeZone'],
-        observation_coordinates = json_data['observation_coordinates'],
-        observation_waterTemp = json_data['observation_waterTemp'],
-        observation_airTemp = json_data['observation_airTemp'],
-        observation_humidity = json_data['observation_humidity'],
-        observation_windSpeed = json_data['observation_windSpeed'],
-        observation_windDirection = json_data['observation_windDirection'],
-        observation_precipitation = json_data['observation_precipitation'],
-        observation_haze = json_data['observation_haze'],
-        observation_becquerel = json_data['observation_becquerel']
+    # Validate other fields
+    if not (validate_timezone_offset(observation_timeZone) and
+            validate_coordinates(observation_coordinates) and
+            validate_temperature(observation_waterTemp) and
+            validate_temperature(observation_airTemp) and
+            validate_humidity(observation_humidity) and
+            validate_wind_speed(observation_windSpeed) and
+            validate_wind_direction(observation_windDirection) and
+            validate_precipitation(observation_precipitation) and
+            validate_haze(observation_haze) and
+            validate_becquerel(observation_becquerel)):
+        return {"message": "Invalid data format"}, 400
+
+    # Generate UUID if not provided
+    observation_id = str(uuid.uuid4())
+
+    # Create new observation object
+    new_observation = Observation(
+        observation_id=observation_id,
+        observation_date=observation_date,
+        observation_time=observation_time,
+        observation_timeZone=observation_timeZone,
+        observation_coordinates=observation_coordinates,
+        observation_waterTemp=observation_waterTemp,
+        observation_airTemp=observation_airTemp,
+        observation_humidity=observation_humidity,
+        observation_windSpeed=observation_windSpeed,
+        observation_windDirection=observation_windDirection,
+        observation_precipitation=observation_precipitation,
+        observation_haze=observation_haze,
+        observation_becquerel=observation_becquerel
     )
+
+    # Add and commit to the database
     db.session.add(new_observation)
 
     db.session.commit()
-    print ("Record added:")
-    print (json.dumps(json_data, indent=4)) # used for debugging purposes
+
+    print("Record added:")
+    print(json.dumps(json_data, indent=4))  # used for debugging purposes
     return observation_schema.jsonify(new_observation)
 #--------------------------------------------------------------------------------
 # endpoint to show all observations
 @app.get("/observations/get_observations")
 @token_required
 def get_observations():
-     all_observations = Observation.query.all()
-     return observations_schema.jsonify(all_observations)
+    all_observations = Observation.query.all()
+    return observations_schema.jsonify(all_observations)
 #--------------------------------------------------------------------------------
 # endpoint uses route parameters to determine observation to be queried from db
 @app.get("/observations/get_one_observation/<observation_id>")
 @token_required
 def get_one_observation(observation_id):
-     observation = Observation.query.filter_by(observation_id=observation_id).first()
-     return observation_schema.jsonify(observation)
+    observation = Observation.query.filter_by(observation_id=observation_id).first()
+    return observation_schema.jsonify(observation)
 #--------------------------------------------------------------------------------
 #endpoint uses query parameters to get observation
 @app.get("/observations/get_one_observation")
 @token_required
 def get_one_observation_query():
-     observation_id = request.args.get("observation_id") # req.args.get() used to access query parameters
-     observation = Observation.query.filter_by(observation_id=observation_id).first()
-     return observation_schema.jsonify(observation)
+    observation_id = request.args.get("observation_id")
+    observation = Observation.query.filter_by(observation_id=observation_id).first()
+    return observation_schema.jsonify(observation)
 #--------------------------------------------------------------------------------
 # endpoint used to get observation by json
 @app.get("/observations/get_one_observation_json")
@@ -158,6 +246,7 @@ def get_one_observation_json():
      observation_id = json_data["observation_id"]
      observation = Observation.query.filter_by(observation_id=observation_id).first()
      return observation_schema.jsonify(observation)
+
 #--------------------------------------------------------------------------------
 # endpoint to delete one observation
 @app.delete("/observations/delete_one_observation/<observation_id>")
