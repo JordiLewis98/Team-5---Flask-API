@@ -143,8 +143,8 @@ def login():
             return {"message": "error - username or password is incorrect"}, 401
     else:
         return {"message": "no authorisation details"}, 401
-          
-#--------------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+# adds one observation
 @app.post("/observations/add_observations_json")
 def observations_add_json():
     """endpoint uses json to add observation details to db"""
@@ -213,6 +213,88 @@ def observations_add_json():
     print("Record added:")
     print(json.dumps(json_data, indent=4))  # used for debugging purposes
     return observation_schema.jsonify(new_observation)
+#--------------------------------------------------------------------------------  
+# adds multiple observations 
+@app.post("/observations/add_bulk_observations_json")
+def add_bulk_observations():
+    """
+    Endpoint to add multiple observations in bulk
+    """
+    # Parse the JSON data from the request
+    json_data = request.get_json()
+
+    # Ensure the input is a list (bulk data should be an array of objects)
+    if not isinstance(json_data, list):
+        return {"message": "Input should be a list of observations"}, 400
+
+    added_observations = []  # List to store successfully added observations
+    errors = []  # List to store errors for invalid records
+
+    # Iterate through each observation in the input list
+    for index, record in enumerate(json_data):
+        try:
+            # Parse and validate date and time fields
+            observation_date = datetime.strptime(record.get('observation_date'), '%Y-%m-%d').date()
+            observation_time = datetime.strptime(record.get('observation_time'), '%H:%M:%S').time()
+
+            # Extract and validate other fields
+            observation_timeZone = record.get('observation_timeZone')
+            observation_coordinates = record.get('observation_coordinates')
+            observation_waterTemp = record.get('observation_waterTemp')
+            observation_airTemp = record.get('observation_airTemp')
+            observation_humidity = record.get('observation_humidity')
+            observation_windSpeed = record.get('observation_windSpeed')
+            observation_windDirection = record.get('observation_windDirection')
+            observation_precipitation = record.get('observation_precipitation')
+            observation_haze = record.get('observation_haze')
+            observation_becquerel = record.get('observation_becquerel')
+
+            # Validate all extracted fields
+            if not (validate_timezone_offset(observation_timeZone) and
+                    validate_coordinates(observation_coordinates) and
+                    validate_temperature(observation_waterTemp) and
+                    validate_temperature(observation_airTemp) and
+                    validate_humidity(observation_humidity) and
+                    validate_wind_speed(observation_windSpeed) and
+                    validate_wind_direction(observation_windDirection) and
+                    validate_precipitation(observation_precipitation) and
+                    validate_haze(observation_haze) and
+                    validate_becquerel(observation_becquerel)):
+                raise ValueError("Invalid data format")
+
+            # Create a new Observation object
+            new_observation = Observation(
+                observation_id=str(uuid.uuid4()),  # Generate a unique ID
+                observation_date=observation_date,
+                observation_time=observation_time,
+                observation_timeZone=observation_timeZone,
+                observation_coordinates=observation_coordinates,
+                observation_waterTemp=observation_waterTemp,
+                observation_airTemp=observation_airTemp,
+                observation_humidity=observation_humidity,
+                observation_windSpeed=observation_windSpeed,
+                observation_windDirection=observation_windDirection,
+                observation_precipitation=observation_precipitation,
+                observation_haze=observation_haze,
+                observation_becquerel=observation_becquerel
+            )
+
+            # Add the new observation to the session
+            db.session.add(new_observation)
+            added_observations.append(new_observation)  # Append to the success list
+
+        except Exception as e:
+            # Record errors for invalid data
+            errors.append({"index": index, "error": str(e)})
+
+    # Commit all valid observations to the database
+    db.session.commit()
+
+    # Return the results: added observations and any errors
+    return {
+        "added": observations_schema.dump(added_observations),
+        "errors": errors
+    }
 #--------------------------------------------------------------------------------
 # endpoint to show all observations
 @app.get("/observations/get_observations")
@@ -246,6 +328,54 @@ def get_one_observation_json():
      observation = Observation.query.filter_by(observation_id=observation_id).first()
      return observation_schema.jsonify(observation)
 #--------------------------------------------------------------------------------
+# endpoint used to update multiple observations by json
+@app.put("/observations/update_bulk_observations")
+def update_bulk_observations():
+    """
+    Endpoint to update multiple observations in bulk
+    """
+    # Parse the JSON data from the request
+    json_data = request.get_json()
+
+    # Ensure the input is a list (bulk data should be an array of objects)
+    if not isinstance(json_data, list):
+        return {"message": "Input should be a list of observation updates"}, 400
+
+    updated_observations = []  # List to store successfully updated observations
+    errors = []  # List to store errors for invalid records
+
+    # Iterate through each update request in the input list
+    for index, record in enumerate(json_data):
+        try:
+            # Extract the observation ID (required for updates)
+            observation_id = record.get('observation_id')
+            observation = Observation.query.filter_by(observation_id=observation_id).first()
+
+            # If the observation doesn't exist, record an error
+            if not observation:
+                raise ValueError(f"Observation ID {observation_id} not found")
+
+            # Update fields only if they are provided in the input
+            for key, value in record.items():
+                if hasattr(observation, key):
+                    setattr(observation, key, value)
+
+            # Add the updated observation to the success list
+            updated_observations.append(observation)
+
+        except Exception as e:
+            # Record errors for invalid data
+            errors.append({"index": index, "error": str(e)})
+
+    # Commit all changes to the database
+    db.session.commit()
+
+    # Return the results: updated observations and any errors
+    return {
+        "updated": observations_schema.dump(updated_observations),
+        "errors": errors
+    }
+#-------------------------------------------------------------------------------
 # endpoint to delete one observation
 @app.delete("/observations/delete_one_observation/<observation_id>")
 @token_required
@@ -255,6 +385,50 @@ def delete_one_observation_route(observation_id): # observation_id accepted as a
 
      return {"Observation Deleted" : f"observation_id: {observation_id}"}
 #--------------------------------------------------------------------------------
+# endpoint used to delete mutliple observations
+@app.delete("/observations/delete_bulk_observations")
+def delete_bulk_observations():
+    """
+    Endpoint to delete multiple observations in bulk
+    """
+    # Parse the JSON data from the request
+    json_data = request.get_json()
+
+    # Ensure the input is a list (bulk data should be an array of observation IDs)
+    if not isinstance(json_data, list):
+        return {"message": "Input should be a list of observation IDs"}, 400
+
+    deleted_ids = []  # List to store successfully deleted IDs
+    errors = []  # List to store errors for invalid IDs
+
+    # Iterate through each observation ID in the input list
+    for index, observation_id in enumerate(json_data):
+        try:
+            # Query the observation by ID
+            observation = Observation.query.filter_by(observation_id=observation_id).first()
+
+            # If the observation doesn't exist, record an error
+            if not observation:
+                raise ValueError(f"Observation ID {observation_id} not found")
+
+            # Delete the observation
+            db.session.delete(observation)
+            deleted_ids.append(observation_id)  # Append to the success list
+
+        except Exception as e:
+            # Record errors for invalid IDs
+            errors.append({"index": index, "error": str(e)})
+
+    # Commit all deletions to the database
+    db.session.commit()
+
+    # Return the results: deleted IDs and any errors
+    return {
+        "deleted_ids": deleted_ids,
+        "errors": errors
+    }
+#--------------------------------------------------------------------------------
+
 if __name__ == '__main__':
      with app.app_context():
           db.create_all()
