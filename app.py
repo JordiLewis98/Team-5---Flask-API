@@ -83,10 +83,9 @@ def validate_timezone_offset(offset):
     return bool(re.match(r"^UTC([+-])\d{2}:\d{2}$", offset))
 
 def validate_coordinates(coord):
-    # Validate coordinates in decimal degrees (float)
     try:
-        float(coord)
-        return True
+        lat, lon = map(float, coord.split(','))
+        return -90 <= lat <= 90 and -180 <= lon <= 180
     except ValueError:
         return False
 
